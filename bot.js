@@ -1,21 +1,45 @@
-const { Client, GatewayIntentBits, Partials, ActionRowBuilder, ButtonBuilder, ButtonStyle, Events, PermissionsBitField, ChannelType } = require('discord.js');
+// bot.js
+const { 
+    Client, 
+    GatewayIntentBits, 
+    Partials, 
+    ActionRowBuilder, 
+    ButtonBuilder, 
+    ButtonStyle, 
+    Events, 
+    PermissionsBitField, 
+    ChannelType 
+} = require('discord.js');
 require('dotenv').config();
 
+// =======================
+// CONFIGURATION
+// =======================
 const TOKEN = process.env.TOKEN;
-const VERIFY_ROLE = 'VERIFY_ROLE_ID';
-const PROJECTLEAD_ROLE = 'PROJECTLEAD_ROLE_ID';
-const SUPPORT_ROLE = 'SUPPORT_ROLE_ID';
-const TICKET_CATEGORY = 'TICKET_CATEGORY_ID';
-const LOG_CHANNEL = 'LOG_CHANNEL_ID';
 
+const SURVIVOR_ROLE = 'SURVIVOR_ROLE_ID';       // Replace with @Survivor role ID
+const PROJECTLEAD_ROLE = 'PROJECTLEAD_ROLE_ID'; // Replace with Projectlead role ID
+const SUPPORT_ROLE = 'SUPPORT_ROLE_ID';         // Replace with Support role ID
+const TICKET_CATEGORY = 'TICKET_CATEGORY_ID';   // Replace with your ticket category ID
+const LOG_CHANNEL = 'LOG_CHANNEL_ID';           // Replace with channel ID where transcripts go
+const TICKET_CHANNEL = 'TICKET_CHANNEL_ID';     // Replace with #📧│𝖢𝗋𝖾𝖺𝗍𝖾-𝖺-𝖳𝗂𝖼𝗄𝖾𝗍 channel ID
+
+// =======================
+// CLIENT SETUP
+// =======================
 const client = new Client({
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMembers,   // privileged → enable in dev portal
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent  // privileged → enable in dev portal
+    ],
     partials: [Partials.Channel]
 });
 
-// ------------------------
-// Rule Verification Button
-// ------------------------
+// =======================
+// BUTTONS
+// =======================
 const verifyButton = new ActionRowBuilder()
     .addComponents(
         new ButtonBuilder()
@@ -24,9 +48,6 @@ const verifyButton = new ActionRowBuilder()
             .setStyle(ButtonStyle.Success)
     );
 
-// ------------------------
-// Ticket Button
-// ------------------------
 const ticketButton = new ActionRowBuilder()
     .addComponents(
         new ButtonBuilder()
@@ -35,9 +56,6 @@ const ticketButton = new ActionRowBuilder()
             .setStyle(ButtonStyle.Primary)
     );
 
-// ------------------------
-// Close Button
-// ------------------------
 const closeButton = new ActionRowBuilder()
     .addComponents(
         new ButtonBuilder()
@@ -46,38 +64,48 @@ const closeButton = new ActionRowBuilder()
             .setStyle(ButtonStyle.Danger)
     );
 
-// ------------------------
-// Ready Event
-// ------------------------
-client.once('ready', () => {
-    console.log(`Bot online: ${client.user.tag}`);
+// =======================
+// READY EVENT
+// =======================
+client.once(Events.ClientReady, () => {
+    console.log(`Bot Online: ${client.user.tag}`);
 });
 
-// ------------------------
-// Interaction Event
-// ------------------------
+// =======================
+// INTERACTION HANDLER
+// =======================
 client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isButton()) return;
 
-    // Verification
+    // ---------------------
+    // RULES VERIFICATION
+    // ---------------------
     if (interaction.customId === 'verify') {
-        const role = interaction.guild.roles.cache.get(VERIFY_ROLE);
+        const role = interaction.guild.roles.cache.get(SURVIVOR_ROLE);
         if (!role) return;
         if (interaction.member.roles.cache.has(role.id)) {
-            return interaction.reply({ content: 'You already accepted the rules.', ephemeral: true });
+            return interaction.reply({ content: 'You already have the Survivor role!', ephemeral: true });
         }
+
         await interaction.member.roles.add(role);
-        return interaction.reply({ content: 'You now have access to the server!', ephemeral: true });
+        return interaction.reply({ content: '✅ You now have the Survivor role and access to the server!', ephemeral: true });
     }
 
-    // Ticket creation
+    // ---------------------
+    // TICKET CREATION
+    // ---------------------
     if (interaction.customId === 'ticket') {
+
+        // Only allow in #📧│𝖢𝗋𝖾𝖺𝗍𝖾-𝖺-𝖳𝗂𝖼𝗄𝖾𝗍
+        if (interaction.channel.id !== TICKET_CHANNEL) {
+            return interaction.reply({ content: '❌ You can only use the ticket button in the #📧│𝖢𝗋𝖾𝖺𝗍𝖾-𝖺-𝖳𝗂𝖼𝗄𝖾𝗍 channel.', ephemeral: true });
+        }
+
         const category = interaction.guild.channels.cache.get(TICKET_CATEGORY);
-        if (!category) return;
+        if (!category) return interaction.reply({ content: 'Ticket category not found.', ephemeral: true });
 
         const ticketName = `ticket-${interaction.user.username.toLowerCase()}`;
 
-        // Check if ticket already exists
         if (category.children.find(ch => ch.name === ticketName)) {
             return interaction.reply({ content: 'You already have a ticket.', ephemeral: true });
         }
@@ -96,28 +124,39 @@ client.on(Events.InteractionCreate, async interaction => {
             permissionOverwrites: overwrites
         });
 
-        await ticketChannel.send({ content: `<@${interaction.user.id}> <@&${PROJECTLEAD_ROLE}> <@&${SUPPORT_ROLE}> Support will assist you shortly.`, components: [closeButton] });
-        return interaction.reply({ content: `Ticket created: ${ticketChannel}`, ephemeral: true });
+        await interaction.reply({ content: `Ticket created: ${ticketChannel}`, ephemeral: true });
+
+        await ticketChannel.send({ 
+            content: `<@${interaction.user.id}> <@&${PROJECTLEAD_ROLE}> <@&${SUPPORT_ROLE}> Support will assist you shortly.`,
+            components: [closeButton]
+        });
     }
 
-    // Ticket close
+    // ---------------------
+    // TICKET CLOSING
+    // ---------------------
     if (interaction.customId === 'close') {
+        await interaction.reply({ content: 'Closing ticket...', ephemeral: true });
+
         const logChannel = interaction.guild.channels.cache.get(LOG_CHANNEL);
         if (!logChannel) return;
 
-        // Save transcript
         const messages = await interaction.channel.messages.fetch({ limit: 100 });
         let transcript = '';
         messages.reverse().forEach(m => transcript += `${m.author.tag}: ${m.content}\n`);
 
-        await logChannel.send({ content: `Transcript for ${interaction.channel.name}`, files: [{ attachment: Buffer.from(transcript), name: `${interaction.channel.name}-transcript.txt` }] });
+        await logChannel.send({ 
+            content: `Transcript for ${interaction.channel.name}`,
+            files: [{ attachment: Buffer.from(transcript), name: `${interaction.channel.name}-transcript.txt` }]
+        });
+
         await interaction.channel.delete();
     }
 });
 
-// ------------------------
-// Commands to send buttons
-// ------------------------
+// =======================
+// ADMIN COMMANDS TO SEND BUTTONS
+// =======================
 client.on(Events.MessageCreate, async message => {
     if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return;
 
@@ -130,5 +169,7 @@ client.on(Events.MessageCreate, async message => {
     }
 });
 
-// ------------------------
+// =======================
+// LOGIN
+// =======================
 client.login(TOKEN);
