@@ -8,7 +8,10 @@ const {
   Events,
   PermissionsBitField,
   ChannelType,
-  EmbedBuilder
+  EmbedBuilder,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle
 } = require('discord.js');
 
 require('dotenv').config();
@@ -66,31 +69,29 @@ function makeTicketName(username) {
   return `ticket-${safe || 'user'}`;
 }
 
+function isValidSteamId(input) {
+  return /^\d{17,}$/.test(input.trim());
+}
+
 async function sendTicketPanel() {
   try {
 
     const channel = await client.channels.fetch(TICKET_CHANNEL);
 
-    if (!channel || !channel.isTextBased()) {
-      console.error("Ticket channel not found.");
-      return;
-    }
-
     const embed = new EmbedBuilder()
       .setTitle('📨 Ticket-System')
       .setDescription(
         "Welcome to the support center.\n\n" +
-        "Press the button below to create a private support ticket.\n\n" +
-        "**Before opening a ticket:**\n" +
-        "• Explain your issue clearly\n" +
-        "• Include screenshots if needed\n" +
-        "• Be patient while staff review it\n\n" +
+        "Press the button below to open a support ticket.\n\n" +
+        "**Requirements:**\n" +
+        "• Steam ID (minimum 17 digits)\n" +
+        "• Description of the issue\n\n" +
         "⚠ Tickets can only be closed by the team."
       )
       .setColor(0x5865F2)
       .addFields(
         { name: "🛠 Support", value: "Questions, reports, or help requests.", inline: false },
-        { name: "🔒 Privacy", value: "Your ticket will only be visible to you and staff.", inline: false }
+        { name: "🔒 Privacy", value: "Tickets are private between you and staff.", inline: false }
       )
       .setFooter({ text: "Press the button below to create your ticket" })
       .setTimestamp();
@@ -114,13 +115,108 @@ client.once(Events.ClientReady, async () => {
 
 client.on(Events.InteractionCreate, async interaction => {
 
-  if (!interaction.isButton()) return;
+  if (interaction.isButton()) {
 
-  if (interaction.customId === 'ticket') {
+    if (interaction.customId === 'ticket') {
 
-    if (interaction.channel.id !== TICKET_CHANNEL) {
+      if (interaction.channel.id !== TICKET_CHANNEL) {
+        return interaction.reply({
+          content: "Use the ticket button in the create-a-ticket channel.",
+          ephemeral: true
+        });
+      }
+
+      const modal = new ModalBuilder()
+        .setCustomId('ticket_modal')
+        .setTitle('Create Support Ticket');
+
+      const steamInput = new TextInputBuilder()
+        .setCustomId('steam_id')
+        .setLabel('Steam ID (minimum 17 digits)')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMinLength(17);
+
+      const problemInput = new TextInputBuilder()
+        .setCustomId('problem')
+        .setLabel('Describe your problem')
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(true)
+        .setMinLength(10);
+
+      const row1 = new ActionRowBuilder().addComponents(steamInput);
+      const row2 = new ActionRowBuilder().addComponents(problemInput);
+
+      modal.addComponents(row1, row2);
+
+      return interaction.showModal(modal);
+    }
+
+    if (interaction.customId === 'claim') {
+
+      if (!isStaff(interaction.member)) {
+        return interaction.reply({
+          content: "Only staff can claim tickets.",
+          ephemeral: true
+        });
+      }
+
+      await interaction.channel.send(`🛠 Ticket claimed by ${interaction.user.tag}`);
+
       return interaction.reply({
-        content: "Use the ticket button in the create-a-ticket channel.",
+        content: "Ticket claimed.",
+        ephemeral: true
+      });
+    }
+
+    if (interaction.customId === 'close') {
+
+      if (!isStaff(interaction.member)) {
+        return interaction.reply({
+          content: "Only staff can close tickets.",
+          ephemeral: true
+        });
+      }
+
+      const archive = interaction.guild.channels.cache.get(ARCHIVE_CATEGORY);
+
+      await interaction.reply({
+        content: "Archiving ticket...",
+        ephemeral: true
+      });
+
+      const messages = await interaction.channel.messages.fetch({ limit: 100 });
+
+      let transcript = "";
+
+      messages.reverse().forEach(m => {
+        transcript += `${m.author.tag}: ${m.content}\n`;
+      });
+
+      await interaction.channel.setParent(archive.id);
+      await interaction.channel.setName(`closed-${interaction.channel.name}`);
+
+      await interaction.channel.send({
+        content: "Ticket archived",
+        files: [{
+          attachment: Buffer.from(transcript),
+          name: "transcript.txt"
+        }]
+      });
+    }
+
+  }
+
+  if (interaction.isModalSubmit()) {
+
+    if (interaction.customId !== 'ticket_modal') return;
+
+    const steamId = interaction.fields.getTextInputValue('steam_id');
+    const problem = interaction.fields.getTextInputValue('problem');
+
+    if (!isValidSteamId(steamId)) {
+      return interaction.reply({
+        content: "Steam ID must be at least 17 digits.",
         ephemeral: true
       });
     }
@@ -153,17 +249,13 @@ client.on(Events.InteractionCreate, async interaction => {
     });
 
     const embed = new EmbedBuilder()
-      .setTitle("🎫 Support Ticket Opened")
+      .setTitle("🎫 Support Ticket")
       .setDescription(
-        `Hello ${interaction.user}, your private support ticket has been created.\n\n` +
-        "Please describe your issue clearly.\n\n" +
-        "**Helpful information:**\n" +
-        "• What happened\n" +
-        "• When it happened\n" +
-        "• Screenshots if possible"
+        `**User:** ${interaction.user}\n\n` +
+        `**Steam ID:** ${steamId}\n\n` +
+        `**Problem:**\n${problem}`
       )
       .setColor(0x57F287)
-      .setFooter({ text: "Staff will assist you shortly." })
       .setTimestamp();
 
     await ticketChannel.send({
@@ -172,61 +264,8 @@ client.on(Events.InteractionCreate, async interaction => {
     });
 
     return interaction.reply({
-      content: `✅ Ticket created: ${ticketChannel}`,
+      content: `Ticket created: ${ticketChannel}`,
       ephemeral: true
-    });
-  }
-
-  if (interaction.customId === 'claim') {
-
-    if (!isStaff(interaction.member)) {
-      return interaction.reply({
-        content: "Only staff can claim tickets.",
-        ephemeral: true
-      });
-    }
-
-    await interaction.channel.send(`🛠 Ticket claimed by ${interaction.user.tag}`);
-
-    return interaction.reply({
-      content: "Ticket claimed.",
-      ephemeral: true
-    });
-  }
-
-  if (interaction.customId === 'close') {
-
-    if (!isStaff(interaction.member)) {
-      return interaction.reply({
-        content: "Only staff can close tickets.",
-        ephemeral: true
-      });
-    }
-
-    const archive = interaction.guild.channels.cache.get(ARCHIVE_CATEGORY);
-
-    await interaction.reply({
-      content: "Archiving ticket...",
-      ephemeral: true
-    });
-
-    const messages = await interaction.channel.messages.fetch({ limit: 100 });
-
-    let transcript = "";
-
-    messages.reverse().forEach(m => {
-      transcript += `${m.author.tag}: ${m.content}\n`;
-    });
-
-    await interaction.channel.setParent(archive.id);
-    await interaction.channel.setName(`closed-${interaction.channel.name}`);
-
-    await interaction.channel.send({
-      content: "Ticket archived",
-      files: [{
-        attachment: Buffer.from(transcript),
-        name: "transcript.txt"
-      }]
     });
   }
 
