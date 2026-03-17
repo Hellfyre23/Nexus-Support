@@ -33,18 +33,18 @@ const client = new Client({
 const ticketButtonRow = new ActionRowBuilder().addComponents(
   new ButtonBuilder()
     .setCustomId('ticket')
-    .setLabel('Create Ticket')
+    .setLabel('🎫 Create Ticket')
     .setStyle(ButtonStyle.Primary)
 );
 
 const staffButtonsRow = new ActionRowBuilder().addComponents(
   new ButtonBuilder()
     .setCustomId('claim')
-    .setLabel('Claim Ticket')
+    .setLabel('🛠 Claim Ticket')
     .setStyle(ButtonStyle.Secondary),
   new ButtonBuilder()
     .setCustomId('close')
-    .setLabel('Close Ticket')
+    .setLabel('🔒 Close Ticket')
     .setStyle(ButtonStyle.Danger)
 );
 
@@ -71,12 +71,29 @@ async function sendTicketPanel() {
 
     const channel = await client.channels.fetch(TICKET_CHANNEL);
 
+    if (!channel || !channel.isTextBased()) {
+      console.error("Ticket channel not found.");
+      return;
+    }
+
     const embed = new EmbedBuilder()
-      .setTitle('Ticket-System')
+      .setTitle('📨 Ticket-System')
       .setDescription(
-        'You can create a ticket here:\nPress the button and enter your request.\n\n(Tickets can only be closed by the team)'
+        "Welcome to the support center.\n\n" +
+        "Press the button below to create a private support ticket.\n\n" +
+        "**Before opening a ticket:**\n" +
+        "• Explain your issue clearly\n" +
+        "• Include screenshots if needed\n" +
+        "• Be patient while staff review it\n\n" +
+        "⚠ Tickets can only be closed by the team."
       )
-      .setColor(0x2b2d31);
+      .setColor(0x5865F2)
+      .addFields(
+        { name: "🛠 Support", value: "Questions, reports, or help requests.", inline: false },
+        { name: "🔒 Privacy", value: "Your ticket will only be visible to you and staff.", inline: false }
+      )
+      .setFooter({ text: "Press the button below to create your ticket" })
+      .setTimestamp();
 
     await channel.send({
       embeds: [embed],
@@ -91,11 +108,8 @@ async function sendTicketPanel() {
 }
 
 client.once(Events.ClientReady, async () => {
-
   console.log(`Bot Online: ${client.user.tag}`);
-
   await sendTicketPanel();
-
 });
 
 client.on(Events.InteractionCreate, async interaction => {
@@ -106,7 +120,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
     if (interaction.channel.id !== TICKET_CHANNEL) {
       return interaction.reply({
-        content: 'Use the ticket button in the create-a-ticket channel only.',
+        content: "Use the ticket button in the create-a-ticket channel.",
         ephemeral: true
       });
     }
@@ -115,13 +129,13 @@ client.on(Events.InteractionCreate, async interaction => {
 
     const ticketName = makeTicketName(interaction.user.username);
 
-    const existingTicket = interaction.guild.channels.cache.find(
+    const existing = interaction.guild.channels.cache.find(
       ch => ch.parentId === TICKET_CATEGORY && ch.name === ticketName
     );
 
-    if (existingTicket) {
+    if (existing) {
       return interaction.reply({
-        content: `You already have an open ticket: ${existingTicket}`,
+        content: `You already have a ticket: ${existing}`,
         ephemeral: true
       });
     }
@@ -139,18 +153,26 @@ client.on(Events.InteractionCreate, async interaction => {
     });
 
     const embed = new EmbedBuilder()
-      .setTitle('Ticket-System')
-      .setDescription('Support will assist you shortly.')
-      .setColor(0x2b2d31);
+      .setTitle("🎫 Support Ticket Opened")
+      .setDescription(
+        `Hello ${interaction.user}, your private support ticket has been created.\n\n` +
+        "Please describe your issue clearly.\n\n" +
+        "**Helpful information:**\n" +
+        "• What happened\n" +
+        "• When it happened\n" +
+        "• Screenshots if possible"
+      )
+      .setColor(0x57F287)
+      .setFooter({ text: "Staff will assist you shortly." })
+      .setTimestamp();
 
     await ticketChannel.send({
-      content: `<@${interaction.user.id}> <@&${PROJECTLEAD_ROLE}> <@&${SUPPORT_ROLE}>`,
       embeds: [embed],
       components: [staffButtonsRow]
     });
 
     return interaction.reply({
-      content: `Ticket created: ${ticketChannel}`,
+      content: `✅ Ticket created: ${ticketChannel}`,
       ephemeral: true
     });
   }
@@ -159,15 +181,15 @@ client.on(Events.InteractionCreate, async interaction => {
 
     if (!isStaff(interaction.member)) {
       return interaction.reply({
-        content: 'Only staff can claim tickets.',
+        content: "Only staff can claim tickets.",
         ephemeral: true
       });
     }
 
-    await interaction.channel.send(`Ticket claimed by ${interaction.user.tag}`);
+    await interaction.channel.send(`🛠 Ticket claimed by ${interaction.user.tag}`);
 
     return interaction.reply({
-      content: 'Ticket claimed.',
+      content: "Ticket claimed.",
       ephemeral: true
     });
   }
@@ -176,7 +198,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
     if (!isStaff(interaction.member)) {
       return interaction.reply({
-        content: 'Only staff can close tickets.',
+        content: "Only staff can close tickets.",
         ephemeral: true
       });
     }
@@ -184,7 +206,7 @@ client.on(Events.InteractionCreate, async interaction => {
     const archive = interaction.guild.channels.cache.get(ARCHIVE_CATEGORY);
 
     await interaction.reply({
-      content: 'Archiving ticket...',
+      content: "Archiving ticket...",
       ephemeral: true
     });
 
@@ -197,7 +219,7 @@ client.on(Events.InteractionCreate, async interaction => {
     });
 
     await interaction.channel.setParent(archive.id);
-    await interaction.channel.setName("closed-" + interaction.channel.name);
+    await interaction.channel.setName(`closed-${interaction.channel.name}`);
 
     await interaction.channel.send({
       content: "Ticket archived",
