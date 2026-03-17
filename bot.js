@@ -58,19 +58,30 @@ function isStaff(member) {
   );
 }
 
-function makeTicketName(username) {
-  const safe = username
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 20);
-
-  return `ticket-${safe || 'user'}`;
+function isValidSteamId(input) {
+  return /^[0-9]{17}$/.test(input.trim());
 }
 
-function isValidSteamId(input) {
-  return /^\d{17}$/.test(input.trim());
+function getSteamProfileUrl(steamId) {
+  return `https://steamcommunity.com/profiles/${steamId}`;
+}
+
+function getNextTicketNumber(guild) {
+
+  const tickets = guild.channels.cache.filter(c =>
+    c.parentId === TICKET_CATEGORY && c.name.startsWith("ticket-")
+  );
+
+  let highest = 0;
+
+  tickets.forEach(channel => {
+    const num = parseInt(channel.name.replace("ticket-", ""));
+    if (!isNaN(num) && num > highest) highest = num;
+  });
+
+  const next = highest + 1;
+
+  return `ticket-${String(next).padStart(3, "0")}`;
 }
 
 async function sendTicketPanel() {
@@ -84,7 +95,7 @@ async function sendTicketPanel() {
         "Welcome to the support center.\n\n" +
         "Press the button below to open a support ticket.\n\n" +
         "**Requirements:**\n" +
-        "• Steam ID (exactly 17 digits)\n" +
+        "• Steam ID (17 numbers)\n" +
         "• Description of the issue\n\n" +
         "⚠ Tickets can only be closed by the team."
       )
@@ -100,8 +111,6 @@ async function sendTicketPanel() {
       embeds: [embed],
       components: [ticketButtonRow]
     });
-
-    console.log("Ticket panel sent.");
 
   } catch (error) {
     console.error("Failed to send ticket panel:", error);
@@ -132,7 +141,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
       const steamInput = new TextInputBuilder()
         .setCustomId('steam_id')
-        .setLabel('Steam ID (17 digits)')
+        .setLabel('Steam ID (17 numbers)')
         .setStyle(TextInputStyle.Short)
         .setRequired(true)
         .setMinLength(17)
@@ -143,7 +152,8 @@ client.on(Events.InteractionCreate, async interaction => {
         .setLabel('Describe your problem')
         .setStyle(TextInputStyle.Paragraph)
         .setRequired(true)
-        .setMinLength(10);
+        .setMinLength(10)
+        .setMaxLength(1000);
 
       const row1 = new ActionRowBuilder().addComponents(steamInput);
       const row2 = new ActionRowBuilder().addComponents(problemInput);
@@ -212,30 +222,21 @@ client.on(Events.InteractionCreate, async interaction => {
 
     if (interaction.customId !== 'ticket_modal') return;
 
-    const steamId = interaction.fields.getTextInputValue('steam_id');
-    const problem = interaction.fields.getTextInputValue('problem');
+    const steamId = interaction.fields.getTextInputValue('steam_id').trim();
+    const problem = interaction.fields.getTextInputValue('problem').trim();
 
     if (!isValidSteamId(steamId)) {
       return interaction.reply({
-        content: "Steam ID must be exactly 17 digits.",
+        content: "Steam ID must be exactly 17 numbers.",
         ephemeral: true
       });
     }
 
     const category = interaction.guild.channels.cache.get(TICKET_CATEGORY);
 
-    const ticketName = makeTicketName(interaction.user.username);
+    const ticketName = getNextTicketNumber(interaction.guild);
 
-    const existing = interaction.guild.channels.cache.find(
-      ch => ch.parentId === TICKET_CATEGORY && ch.name === ticketName
-    );
-
-    if (existing) {
-      return interaction.reply({
-        content: `You already have a ticket: ${existing}`,
-        ephemeral: true
-      });
-    }
+    const steamProfileUrl = getSteamProfileUrl(steamId);
 
     const ticketChannel = await interaction.guild.channels.create({
       name: ticketName,
@@ -250,10 +251,11 @@ client.on(Events.InteractionCreate, async interaction => {
     });
 
     const embed = new EmbedBuilder()
-      .setTitle("🎫 Support Ticket")
+      .setTitle(`🎫 ${ticketName}`)
       .setDescription(
         `**User:** ${interaction.user}\n\n` +
-        `**Steam ID:** ${steamId}\n\n` +
+        `**Steam ID:** ${steamId}\n` +
+        `**Steam Profile:** ${steamProfileUrl}\n\n` +
         `**Problem:**\n${problem}`
       )
       .setColor(0x57F287)
