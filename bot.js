@@ -68,19 +68,14 @@ function getSteamProfileUrl(id) {
 
 function getNextTicketNumber(guild) {
   const tickets = guild.channels.cache.filter(
-    c =>
-      (c.parentId === TICKET_CATEGORY || c.parentId === ARCHIVE_CATEGORY) &&
-      (c.name.startsWith('ticket-') || c.name.startsWith('closed-ticket-'))
+    c => c.parentId === TICKET_CATEGORY && c.name.startsWith('ticket-')
   );
 
   let highest = 0;
 
   tickets.forEach(ch => {
-    const match = ch.name.match(/ticket-(\d+)/);
-    if (match) {
-      const num = parseInt(match[1], 10);
-      if (!isNaN(num) && num > highest) highest = num;
-    }
+    const num = parseInt(ch.name.replace('ticket-', ''), 10);
+    if (!isNaN(num) && num > highest) highest = num;
   });
 
   const next = highest + 1;
@@ -89,13 +84,52 @@ function getNextTicketNumber(guild) {
 
 async function sendTicketPanel() {
   try {
+    console.log('Trying to send ticket panel...');
+
     const channel = await client.channels.fetch(TICKET_CHANNEL, { force: true });
 
-    if (!channel || !channel.isTextBased()) return;
+    if (!channel) {
+      console.error('Ticket panel error: channel not found.');
+      return;
+    }
+
+    if (!channel.isTextBased()) {
+      console.error('Ticket panel error: channel is not text based.');
+      return;
+    }
+
+    const me = channel.guild.members.me || await channel.guild.members.fetchMe();
+    const perms = channel.permissionsFor(me);
+
+    if (!perms) {
+      console.error('Ticket panel error: could not read bot permissions.');
+      return;
+    }
+
+    if (
+      !perms.has(PermissionsBitField.Flags.ViewChannel) ||
+      !perms.has(PermissionsBitField.Flags.SendMessages) ||
+      !perms.has(PermissionsBitField.Flags.EmbedLinks)
+    ) {
+      console.error('Ticket panel error: missing View Channel, Send Messages, or Embed Links permission.');
+      return;
+    }
+
+    const recentMessages = await channel.messages.fetch({ limit: 20 });
+    const existingPanel = recentMessages.find(
+      msg =>
+        msg.author.id === client.user.id &&
+        msg.embeds.length > 0 &&
+        msg.embeds[0].title === '📨 Ticket-System'
+    );
+
+    if (existingPanel) {
+      console.log('Ticket panel already exists. Not sending another one.');
+      return;
+    }
 
     const embed = new EmbedBuilder()
       .setTitle('📨 Ticket-System')
-      .setThumbnail('attachment://logo.png')
       .setDescription(
         'Press the button below to open a support ticket.\n\n' +
         '**Requirements:**\n' +
@@ -113,30 +147,32 @@ async function sendTicketPanel() {
 
     await channel.send({
       embeds: [embed],
-      components: [ticketButtonRow],
-      files: ['./logo.png']
+      components: [ticketButtonRow]
     });
 
+    console.log('Ticket panel sent successfully.');
   } catch (error) {
-    console.error(error);
+    console.error('Failed to send ticket panel:', error);
   }
 }
 
 client.once(Events.ClientReady, async () => {
-
   console.log(`Bot Online: ${client.user.tag}`);
 
   setTimeout(async () => {
     await sendTicketPanel();
   }, 3000);
-
 });
 
 client.on(Events.InteractionCreate, async interaction => {
-
   if (interaction.isButton()) {
-
     if (interaction.customId === 'ticket') {
+      if (interaction.channel.id !== TICKET_CHANNEL) {
+        return interaction.reply({
+          content: 'Use the ticket button in the create-a-ticket channel.',
+          ephemeral: true
+        });
+      }
 
       const modal = new ModalBuilder()
         .setCustomId('ticket_modal')
@@ -164,39 +200,56 @@ client.on(Events.InteractionCreate, async interaction => {
       );
 
       return interaction.showModal(modal);
-
     }
 
     if (interaction.customId === 'claim') {
-
       if (!isStaff(interaction.member)) {
-        return interaction.reply({ content: 'Only staff can claim tickets.', ephemeral: true });
+        return interaction.reply({
+          content: 'Only staff can claim tickets.',
+          ephemeral: true
+        });
       }
 
       await interaction.channel.setTopic(`Claimed by ${interaction.user.tag}`);
-
       await interaction.channel.send(`🛠 Ticket claimed by ${interaction.user.tag}`);
 
-      return interaction.reply({ content: 'Ticket claimed.', ephemeral: true });
-
+      return interaction.reply({
+        content: 'Ticket claimed.',
+        ephemeral: true
+      });
     }
 
     if (interaction.customId === 'close') {
-
       if (!isStaff(interaction.member)) {
-        return interaction.reply({ content: 'Only staff can close tickets.', ephemeral: true });
+        return interaction.reply({
+          content: 'Only staff can close tickets.',
+          ephemeral: true
+        });
       }
 
       const archive = interaction.guild.channels.cache.get(ARCHIVE_CATEGORY);
 
-      await interaction.reply({ content: 'Archiving ticket...', ephemeral: true });
+      if (!archive) {
+        return interaction.reply({
+          content: 'Archive category not found.',
+          ephemeral: true
+        });
+      }
+
+      await interaction.reply({
+        content: 'Archiving ticket...',
+        ephemeral: true
+      });
 
       const messages = await interaction.channel.messages.fetch({ limit: 100 });
 
       let transcript = '';
 
       messages.reverse().forEach(m => {
-        transcript += `${m.author.tag}: ${m.content}\n`;
+        const text = m.content && m.content.trim().length > 0
+          ? m.content
+          : '[embed/attachment/system message]';
+        transcript += `${m.author.tag}: ${text}\n`;
       });
 
       await interaction.channel.setParent(archive.id);
@@ -213,22 +266,33 @@ client.on(Events.InteractionCreate, async interaction => {
       setTimeout(async () => {
         try {
           await interaction.channel.delete();
-        } catch {}
+        } catch (err) {
+          console.error('Auto delete failed:', err);
+        }
       }, AUTO_DELETE_DAYS * 24 * 60 * 60 * 1000);
-
     }
-
   }
 
   if (interaction.isModalSubmit()) {
-
     if (interaction.customId !== 'ticket_modal') return;
 
     const steamId = interaction.fields.getTextInputValue('steam_id');
     const problem = interaction.fields.getTextInputValue('problem');
 
     if (!isValidSteamId(steamId)) {
-      return interaction.reply({ content: 'Steam ID must be exactly 17 numbers.', ephemeral: true });
+      return interaction.reply({
+        content: 'Steam ID must be exactly 17 numbers.',
+        ephemeral: true
+      });
+    }
+
+    const category = interaction.guild.channels.cache.get(TICKET_CATEGORY);
+
+    if (!category) {
+      return interaction.reply({
+        content: 'Ticket category not found.',
+        ephemeral: true
+      });
     }
 
     const ticketName = getNextTicketNumber(interaction.guild);
@@ -239,10 +303,36 @@ client.on(Events.InteractionCreate, async interaction => {
       type: ChannelType.GuildText,
       parent: TICKET_CATEGORY,
       permissionOverwrites: [
-        { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-        { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
-        { id: PROJECTLEAD_ROLE, allow: [PermissionsBitField.Flags.ViewChannel] },
-        { id: SUPPORT_ROLE, allow: [PermissionsBitField.Flags.ViewChannel] }
+        {
+          id: interaction.guild.id,
+          deny: [PermissionsBitField.Flags.ViewChannel]
+        },
+        {
+          id: interaction.user.id,
+          allow: [
+            PermissionsBitField.Flags.ViewChannel,
+            PermissionsBitField.Flags.SendMessages,
+            PermissionsBitField.Flags.ReadMessageHistory
+          ]
+        },
+        {
+          id: PROJECTLEAD_ROLE,
+          allow: [
+            PermissionsBitField.Flags.ViewChannel,
+            PermissionsBitField.Flags.SendMessages,
+            PermissionsBitField.Flags.ReadMessageHistory,
+            PermissionsBitField.Flags.ManageChannels
+          ]
+        },
+        {
+          id: SUPPORT_ROLE,
+          allow: [
+            PermissionsBitField.Flags.ViewChannel,
+            PermissionsBitField.Flags.SendMessages,
+            PermissionsBitField.Flags.ReadMessageHistory,
+            PermissionsBitField.Flags.ManageChannels
+          ]
+        }
       ]
     });
 
@@ -266,9 +356,7 @@ client.on(Events.InteractionCreate, async interaction => {
       content: `Ticket created: ${ticketChannel}`,
       ephemeral: true
     });
-
   }
-
 });
 
 client.login(TOKEN);
