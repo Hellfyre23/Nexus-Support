@@ -129,7 +129,7 @@ async function sendTicketPanel() {
     }
 
     const embed = new EmbedBuilder()
-      .setTitle('📨 Nexus Support Ticket 📨')
+      .setTitle('📩 Nexus Support Ticket 📩')
       .setDescription(
         'Press the button below to open a support ticket.\n\n' +
         '**Requirements:**\n' +
