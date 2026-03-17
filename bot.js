@@ -27,6 +27,9 @@ const ARCHIVE_CATEGORY = '1344514813937713183';
 
 const AUTO_DELETE_DAYS = 10;
 
+/* PUT YOUR LOGO LINK HERE */
+const LOGO_URL = "https://i.imgur.com/logo.png";
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -92,6 +95,7 @@ async function sendTicketPanel() {
 
   const embed = new EmbedBuilder()
     .setTitle('📨 Ticket-System')
+    .setThumbnail(LOGO_URL)
     .setDescription(
       "Press the button below to open a support ticket.\n\n" +
       "**Requirements:**\n" +
@@ -100,9 +104,10 @@ async function sendTicketPanel() {
       "⚠ Tickets can only be closed by the team."
     )
     .setColor(0x5865F2)
-    .addFields(
-      { name: "🛠 Support", value: "Questions, reports, or help requests.", inline: false }
-    )
+    .addFields({
+      name: "🛠 Support",
+      value: "Questions, reports, or help requests."
+    })
     .setFooter({ text: "Press the button below to create your ticket" })
     .setTimestamp();
 
@@ -150,13 +155,12 @@ client.on(Events.InteractionCreate, async interaction => {
         .setLabel('Describe your problem')
         .setStyle(TextInputStyle.Paragraph)
         .setRequired(true)
-        .setMinLength(10)
-        .setMaxLength(1000);
+        .setMinLength(10);
 
-      const row1 = new ActionRowBuilder().addComponents(steamInput);
-      const row2 = new ActionRowBuilder().addComponents(problemInput);
-
-      modal.addComponents(row1, row2);
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(steamInput),
+        new ActionRowBuilder().addComponents(problemInput)
+      );
 
       return interaction.showModal(modal);
     }
@@ -173,7 +177,7 @@ client.on(Events.InteractionCreate, async interaction => {
       await interaction.channel.setTopic(`Claimed by ${interaction.user.tag}`);
 
       await interaction.channel.send(
-        `🛠 **Ticket claimed by ${interaction.user.tag}**`
+        `🛠 Ticket claimed by ${interaction.user.tag}`
       );
 
       return interaction.reply({
@@ -210,7 +214,7 @@ client.on(Events.InteractionCreate, async interaction => {
       await interaction.channel.setName(`closed-${interaction.channel.name}`);
 
       await interaction.channel.send({
-        content: `Ticket archived. This channel will auto delete in ${AUTO_DELETE_DAYS} days.`,
+        content: `Ticket archived. Auto deleting in ${AUTO_DELETE_DAYS} days.`,
         files: [{
           attachment: Buffer.from(transcript),
           name: "transcript.txt"
@@ -218,9 +222,7 @@ client.on(Events.InteractionCreate, async interaction => {
       });
 
       setTimeout(async () => {
-        try {
-          await interaction.channel.delete();
-        } catch {}
+        try { await interaction.channel.delete(); } catch {}
       }, AUTO_DELETE_DAYS * 24 * 60 * 60 * 1000);
 
     }
@@ -241,8 +243,6 @@ client.on(Events.InteractionCreate, async interaction => {
       });
     }
 
-    const category = interaction.guild.channels.cache.get(TICKET_CATEGORY);
-
     const ticketName = getNextTicketNumber(interaction.guild);
 
     const steamProfile = getSteamProfileUrl(steamId);
@@ -250,7 +250,7 @@ client.on(Events.InteractionCreate, async interaction => {
     const ticketChannel = await interaction.guild.channels.create({
       name: ticketName,
       type: ChannelType.GuildText,
-      parent: category.id,
+      parent: TICKET_CATEGORY,
       permissionOverwrites: [
         { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
         { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
