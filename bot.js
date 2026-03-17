@@ -70,7 +70,7 @@ function makeTicketName(username) {
 }
 
 function isValidSteamId(input) {
-  return /^\d{17,}$/.test(input.trim());
+  return /^\d{17}$/.test(input.trim());
 }
 
 async function sendTicketPanel() {
@@ -84,7 +84,7 @@ async function sendTicketPanel() {
         "Welcome to the support center.\n\n" +
         "Press the button below to open a support ticket.\n\n" +
         "**Requirements:**\n" +
-        "• Steam ID (minimum 17 digits)\n" +
+        "• Steam ID (exactly 17 digits)\n" +
         "• Description of the issue\n\n" +
         "⚠ Tickets can only be closed by the team."
       )
@@ -132,10 +132,11 @@ client.on(Events.InteractionCreate, async interaction => {
 
       const steamInput = new TextInputBuilder()
         .setCustomId('steam_id')
-        .setLabel('Steam ID (minimum 17 digits)')
+        .setLabel('Steam ID (17 digits)')
         .setStyle(TextInputStyle.Short)
         .setRequired(true)
-        .setMinLength(17);
+        .setMinLength(17)
+        .setMaxLength(17);
 
       const problemInput = new TextInputBuilder()
         .setCustomId('problem')
@@ -216,7 +217,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
     if (!isValidSteamId(steamId)) {
       return interaction.reply({
-        content: "Steam ID must be at least 17 digits.",
+        content: "Steam ID must be exactly 17 digits.",
         ephemeral: true
       });
     }
