@@ -120,7 +120,7 @@ async function sendTicketPanel() {
       msg =>
         msg.author.id === client.user.id &&
         msg.embeds.length > 0 &&
-        msg.embeds[0].title === '📨 Ticket-System'
+        msg.embeds[0].title === '📨 Nexus Support Ticket'
     );
 
     if (existingPanel) {
