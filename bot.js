@@ -1,4 +1,3 @@
-// bot.js
 const {
     Client,
     GatewayIntentBits,
@@ -18,13 +17,16 @@ require('dotenv').config();
 // =======================
 const TOKEN = process.env.TOKEN;
 
-const SURVIVOR_ROLE = 'SURVIVOR_ROLE_ID';          // Replace with @Survivor role ID
-const PROJECTLEAD_ROLE = 'PROJECTLEAD_ROLE_ID';    // Replace with Projectlead role ID
-const SUPPORT_ROLE = 'SUPPORT_ROLE_ID';            // Replace with Support role ID
+const SURVIVOR_ROLE = 'SURVIVOR_ROLE_ID';        // replace
+const PROJECTLEAD_ROLE = 'PROJECTLEAD_ROLE_ID';  // replace
+const SUPPORT_ROLE = 'SUPPORT_ROLE_ID';          // replace
 
-const TICKET_CHANNEL = '1344419253062860911';      // #create-a-ticket channel
-const TICKET_CATEGORY = '1344514759915081769';     // Open tickets category
-const ARCHIVE_CATEGORY = '1344514813937713183';    // Archived tickets category
+const TICKET_CHANNEL = '1344419253062860911';    // create-a-ticket channel
+const TICKET_CATEGORY = '1344514759915081769';   // open tickets category
+const ARCHIVE_CATEGORY = '1344514813937713183';  // archived tickets category
+
+// optional: set this if you want !sendrules to go to a specific channel
+const RULES_CHANNEL = 'RULES_CHANNEL_ID';        // replace or leave as-is
 
 // =======================
 // CLIENT SETUP
@@ -64,13 +66,6 @@ const closeButton = new ActionRowBuilder().addComponents(
 );
 
 // =======================
-// READY EVENT
-// =======================
-client.once(Events.ClientReady, () => {
-    console.log(`Bot Online: ${client.user.tag}`);
-});
-
-// =======================
 // HELPERS
 // =======================
 function isStaff(member) {
@@ -79,6 +74,24 @@ function isStaff(member) {
         member.roles.cache.has(SUPPORT_ROLE)
     );
 }
+
+function makeSafeTicketName(username) {
+    const safe = username
+        .toLowerCase()
+        .replace(/[^a-z0-9-_]/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 20);
+
+    return `ticket-${safe || 'user'}`;
+}
+
+// =======================
+// READY EVENT
+// =======================
+client.once(Events.ClientReady, () => {
+    console.log(`Bot Online: ${client.user.tag}`);
+});
 
 // =======================
 // INTERACTION HANDLER
@@ -94,14 +107,14 @@ client.on(Events.InteractionCreate, async interaction => {
 
         if (!role) {
             return interaction.reply({
-                content: '❌ Survivor role not found. Please contact staff.',
+                content: '❌ Survivor role not found. Contact staff.',
                 ephemeral: true
             });
         }
 
         if (interaction.member.roles.cache.has(role.id)) {
             return interaction.reply({
-                content: 'You already have the Survivor role!',
+                content: 'You already have the Survivor role.',
                 ephemeral: true
             });
         }
@@ -109,11 +122,11 @@ client.on(Events.InteractionCreate, async interaction => {
         try {
             await interaction.member.roles.add(role);
             return interaction.reply({
-                content: '✅ You now have the Survivor role and access to the server!',
+                content: '✅ You now have the Survivor role and access to the server.',
                 ephemeral: true
             });
         } catch (error) {
-            console.error('Error giving Survivor role:', error);
+            console.error('Error assigning Survivor role:', error);
             return interaction.reply({
                 content: '❌ I could not assign the Survivor role. Make sure my bot role is above Survivor.',
                 ephemeral: true
@@ -127,7 +140,7 @@ client.on(Events.InteractionCreate, async interaction => {
     if (interaction.customId === 'ticket') {
         if (interaction.channel.id !== TICKET_CHANNEL) {
             return interaction.reply({
-                content: '❌ You can only use the ticket button in the create-a-ticket channel.',
+                content: '❌ You can only use this button in the create-a-ticket channel.',
                 ephemeral: true
             });
         }
@@ -140,15 +153,12 @@ client.on(Events.InteractionCreate, async interaction => {
             });
         }
 
-        const safeUsername = interaction.user.username
-            .toLowerCase()
-            .replace(/[^a-z0-9-_]/g, '-')
-            .slice(0, 20);
-
-        const ticketName = `ticket-${safeUsername}`;
+        const ticketName = makeSafeTicketName(interaction.user.username);
 
         const existingTicket = interaction.guild.channels.cache.find(
-            ch => ch.parentId === TICKET_CATEGORY && ch.name === ticketName
+            ch =>
+                ch.parentId === TICKET_CATEGORY &&
+                ch.name === ticketName
         );
 
         if (existingTicket) {
@@ -168,7 +178,8 @@ client.on(Events.InteractionCreate, async interaction => {
                 allow: [
                     PermissionsBitField.Flags.ViewChannel,
                     PermissionsBitField.Flags.SendMessages,
-                    PermissionsBitField.Flags.ReadMessageHistory
+                    PermissionsBitField.Flags.ReadMessageHistory,
+                    PermissionsBitField.Flags.AttachFiles
                 ]
             },
             {
@@ -177,6 +188,7 @@ client.on(Events.InteractionCreate, async interaction => {
                     PermissionsBitField.Flags.ViewChannel,
                     PermissionsBitField.Flags.SendMessages,
                     PermissionsBitField.Flags.ReadMessageHistory,
+                    PermissionsBitField.Flags.AttachFiles,
                     PermissionsBitField.Flags.ManageChannels
                 ]
             },
@@ -186,6 +198,7 @@ client.on(Events.InteractionCreate, async interaction => {
                     PermissionsBitField.Flags.ViewChannel,
                     PermissionsBitField.Flags.SendMessages,
                     PermissionsBitField.Flags.ReadMessageHistory,
+                    PermissionsBitField.Flags.AttachFiles,
                     PermissionsBitField.Flags.ManageChannels
                 ]
             }
@@ -228,7 +241,7 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 
     // ---------------------
-    // TICKET CLOSING / ARCHIVING
+    // TICKET CLOSE / ARCHIVE
     // ---------------------
     if (interaction.customId === 'close') {
         if (!isStaff(interaction.member)) {
@@ -252,12 +265,17 @@ client.on(Events.InteractionCreate, async interaction => {
         });
 
         try {
-            const messages = await interaction.channel.messages.fetch({ limit: 100 });
-            let transcript = '=== Ticket Transcript ===\n\n';
+            const fetchedMessages = await interaction.channel.messages.fetch({ limit: 100 });
+            const ordered = [...fetchedMessages.values()].reverse();
 
-            messages.reverse().forEach(msg => {
-                transcript += `[${msg.createdAt.toISOString()}] ${msg.author.tag}: ${msg.content || '[embed/attachment]'}\n`;
-            });
+            let transcript = '=== Ticket Transcript ===\n\n';
+            for (const msg of ordered) {
+                const cleanContent = msg.content && msg.content.trim().length > 0
+                    ? msg.content
+                    : '[embed/attachment/system message]';
+
+                transcript += `[${msg.createdAt.toISOString()}] ${msg.author.tag}: ${cleanContent}\n`;
+            }
 
             const archivedName = interaction.channel.name.startsWith('closed-')
                 ? interaction.channel.name
@@ -299,7 +317,7 @@ client.on(Events.InteractionCreate, async interaction => {
                 files: [
                     {
                         attachment: Buffer.from(transcript, 'utf-8'),
-                        name: `${interaction.channel.name}-transcript.txt`
+                        name: `${archivedName}-transcript.txt`
                     }
                 ]
             });
@@ -316,7 +334,7 @@ client.on(Events.InteractionCreate, async interaction => {
 });
 
 // =======================
-// ADMIN COMMANDS TO SEND BUTTONS
+// ADMIN COMMANDS
 // =======================
 client.on(Events.MessageCreate, async message => {
     if (message.author.bot) return;
@@ -324,13 +342,27 @@ client.on(Events.MessageCreate, async message => {
     if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return;
 
     if (message.content === '!sendrules') {
-        await message.channel.send({
+        const rulesChannel = message.guild.channels.cache.get(RULES_CHANNEL);
+
+        if (!rulesChannel) {
+            return message.reply('❌ Rules channel not found. Put the rules channel ID in RULES_CHANNEL.');
+        }
+
+        await rulesChannel.send({
             content: 'Please agree to the rules:',
             components: [verifyButton]
         });
+
+        return message.reply('✅ Rules button sent.');
     }
 
     if (message.content === '!sendtickets') {
+        const ticketChannel = message.guild.channels.cache.get(TICKET_CHANNEL);
+
+        if (!ticketChannel) {
+            return message.reply('❌ Could not find the create-a-ticket channel.');
+        }
+
         const embed = new EmbedBuilder()
             .setTitle('Ticket-System')
             .setDescription(
@@ -339,15 +371,18 @@ client.on(Events.MessageCreate, async message => {
             .setColor(0x2b2d31)
             .setThumbnail('attachment://logo.png');
 
-        await message.channel.send({
+        await ticketChannel.send({
             embeds: [embed],
             files: ['./logo.png'],
             components: [ticketButton]
         });
+
+        return message.reply('✅ Ticket button sent.');
     }
 });
 
 // =======================
 // LOGIN
 // =======================
+client.login(TOKEN);
 client.login(TOKEN);
