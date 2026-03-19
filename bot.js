@@ -13,6 +13,8 @@ const {
   TextInputStyle
 } = require('discord.js');
 
+const fs = require('fs/promises');
+const path = require('path');
 require('dotenv').config();
 
 const TOKEN = process.env.TOKEN;
@@ -25,11 +27,13 @@ const TICKET_CATEGORY = '1344514759915081769';
 const ARCHIVE_CATEGORY = '1344514813937713183';
 
 const AUTO_DELETE_DAYS = 10;
+const COUNTER_FILE = path.join(__dirname, 'ticket-counter.json');
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.DirectMessages
   ]
 });
 
@@ -66,19 +70,24 @@ function getSteamProfileUrl(id) {
   return `https://steamcommunity.com/profiles/${id}`;
 }
 
-function getNextTicketNumber(guild) {
-  const tickets = guild.channels.cache.filter(
-    c => c.parentId === TICKET_CATEGORY && c.name.startsWith('ticket-')
-  );
+async function ensureCounterFile() {
+  try {
+    await fs.access(COUNTER_FILE);
+  } catch {
+    await fs.writeFile(COUNTER_FILE, JSON.stringify({ lastTicketNumber: 0 }, null, 2), 'utf8');
+  }
+}
 
-  let highest = 0;
+async function getNextTicketNumber() {
+  await ensureCounterFile();
 
-  tickets.forEach(ch => {
-    const num = parseInt(ch.name.replace('ticket-', ''), 10);
-    if (!isNaN(num) && num > highest) highest = num;
-  });
+  const raw = await fs.readFile(COUNTER_FILE, 'utf8');
+  const data = JSON.parse(raw);
+  const next = Number(data.lastTicketNumber || 0) + 1;
 
-  const next = highest + 1;
+  data.lastTicketNumber = next;
+  await fs.writeFile(COUNTER_FILE, JSON.stringify(data, null, 2), 'utf8');
+
   return `ticket-${String(next).padStart(3, '0')}`;
 }
 
@@ -120,7 +129,7 @@ async function sendTicketPanel() {
       msg =>
         msg.author.id === client.user.id &&
         msg.embeds.length > 0 &&
-        msg.embeds[0].title === '📨 Nexus Support Ticket'
+        msg.embeds[0].title === '📨 Ticket-System'
     );
 
     if (existingPanel) {
@@ -129,7 +138,7 @@ async function sendTicketPanel() {
     }
 
     const embed = new EmbedBuilder()
-      .setTitle('📩 Nexus Support Ticket 📩')
+      .setTitle('📨 Ticket-System')
       .setDescription(
         'Press the button below to open a support ticket.\n\n' +
         '**Requirements:**\n' +
@@ -158,6 +167,8 @@ async function sendTicketPanel() {
 
 client.once(Events.ClientReady, async () => {
   console.log(`Bot Online: ${client.user.tag}`);
+
+  await ensureCounterFile();
 
   setTimeout(async () => {
     await sendTicketPanel();
@@ -242,15 +253,49 @@ client.on(Events.InteractionCreate, async interaction => {
       });
 
       const messages = await interaction.channel.messages.fetch({ limit: 100 });
+      const orderedMessages = [...messages.values()].reverse();
 
       let transcript = '';
+      let creatorId = null;
 
-      messages.reverse().forEach(m => {
+      for (const m of orderedMessages) {
         const text = m.content && m.content.trim().length > 0
           ? m.content
           : '[embed/attachment/system message]';
         transcript += `${m.author.tag}: ${text}\n`;
-      });
+
+        if (!creatorId && !m.author.bot) {
+          creatorId = m.author.id;
+        }
+      }
+
+      if (!creatorId) {
+        const overwrite = interaction.channel.permissionOverwrites.cache.find(
+          po =>
+            po.id !== interaction.guild.id &&
+            po.id !== PROJECTLEAD_ROLE &&
+            po.id !== SUPPORT_ROLE
+        );
+        if (overwrite) creatorId = overwrite.id;
+      }
+
+      if (creatorId) {
+        try {
+          const creator = await client.users.fetch(creatorId);
+          await creator.send({
+            content: `Here is the transcript for your ticket: ${interaction.channel.name}`,
+            files: [{
+              attachment: Buffer.from(transcript, 'utf8'),
+              name: `${interaction.channel.name}-transcript.txt`
+            }]
+          });
+        } catch (err) {
+          console.error('Failed to DM transcript to creator:', err);
+          await interaction.channel.send('⚠️ I could not DM the transcript to the ticket creator.');
+        }
+      } else {
+        await interaction.channel.send('⚠️ I could not determine the ticket creator to send the transcript.');
+      }
 
       await interaction.channel.setParent(archive.id);
       await interaction.channel.setName(`closed-${interaction.channel.name}`);
@@ -295,13 +340,14 @@ client.on(Events.InteractionCreate, async interaction => {
       });
     }
 
-    const ticketName = getNextTicketNumber(interaction.guild);
+    const ticketName = await getNextTicketNumber();
     const steamProfile = getSteamProfileUrl(steamId);
 
     const ticketChannel = await interaction.guild.channels.create({
       name: ticketName,
       type: ChannelType.GuildText,
       parent: TICKET_CATEGORY,
+      topic: `Created by ${interaction.user.tag} (${interaction.user.id})`,
       permissionOverwrites: [
         {
           id: interaction.guild.id,
