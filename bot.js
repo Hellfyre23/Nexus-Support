@@ -55,19 +55,6 @@ const staffButtonsRow = new ActionRowBuilder().addComponents(
     .setStyle(ButtonStyle.Danger)
 );
 
-function buildArchiveButtonsRow(transcriptUrl) {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setLabel('Open Transcript')
-      .setStyle(ButtonStyle.Link)
-      .setURL(transcriptUrl),
-    new ButtonBuilder()
-      .setCustomId('delete_ticket')
-      .setLabel('🗑 Delete Ticket')
-      .setStyle(ButtonStyle.Danger)
-  );
-}
-
 function isStaff(member) {
   return (
     member.roles.cache.has(PROJECTLEAD_ROLE) ||
@@ -310,8 +297,7 @@ client.on(Events.InteractionCreate, async interaction => {
       await interaction.channel.setParent(archive.id);
       await interaction.channel.setName(`closed-${interaction.channel.name}`);
 
-      const transcriptMessage = await interaction.channel.send({
-        content: `Ticket archived. Auto deleting in ${AUTO_DELETE_DAYS} days.`,
+      const transcriptUpload = await interaction.channel.send({
         files: [
           {
             attachment: Buffer.from(transcript, 'utf8'),
@@ -320,18 +306,31 @@ client.on(Events.InteractionCreate, async interaction => {
         ]
       });
 
-      const transcriptAttachment = transcriptMessage.attachments.first();
+      const transcriptAttachment = transcriptUpload.attachments.first();
+
+      await transcriptUpload.delete().catch(() => {});
 
       if (transcriptAttachment) {
         const archiveEmbed = new EmbedBuilder()
           .setTitle('📦 Ticket Archived')
-          .setDescription('This ticket is archived. Use the buttons below.')
+          .setDescription('This ticket has been archived.')
           .setColor(0xed4245)
           .setTimestamp();
 
+        const archiveButtons = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setLabel('Open Transcript')
+            .setStyle(ButtonStyle.Link)
+            .setURL(transcriptAttachment.url),
+          new ButtonBuilder()
+            .setCustomId('delete_ticket')
+            .setLabel('🗑 Delete Ticket')
+            .setStyle(ButtonStyle.Danger)
+        );
+
         await interaction.channel.send({
           embeds: [archiveEmbed],
-          components: [buildArchiveButtonsRow(transcriptAttachment.url)]
+          components: [archiveButtons]
         });
       }
 
@@ -347,7 +346,7 @@ client.on(Events.InteractionCreate, async interaction => {
           );
 
           await creator.send({
-            content: `Here is the transcript for your ticket: ${interaction.channel.name}`,
+            content: `Your ticket has been closed: ${interaction.channel.name}`,
             components: [transcriptButton]
           });
         } catch (err) {
