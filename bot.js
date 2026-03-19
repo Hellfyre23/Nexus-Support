@@ -214,7 +214,7 @@ client.on(Events.InteractionCreate, async interaction => {
         .setLabel('Describe your problem')
         .setStyle(TextInputStyle.Paragraph)
         .setRequired(true)
-        .setMinLength(10)
+        .setMinLength(0)
         .setMaxLength(1000);
 
       modal.addComponents(
@@ -307,8 +307,6 @@ client.on(Events.InteractionCreate, async interaction => {
       });
 
       const transcriptAttachment = transcriptUpload.attachments.first();
-
-      await transcriptUpload.delete().catch(() => {});
 
       if (transcriptAttachment) {
         const archiveEmbed = new EmbedBuilder()
@@ -461,7 +459,7 @@ client.on(Events.InteractionCreate, async interaction => {
         `**User:** ${interaction.user}\n\n` +
           `**Steam ID:** ${steamId}\n` +
           `**Steam Profile:** ${steamProfile}\n\n` +
-          `**Problem:**\n${problem}`
+          `**Problem:**\n${problem || 'No problem description provided.'}`
       )
       .setColor(0x57f287)
       .setTimestamp();
