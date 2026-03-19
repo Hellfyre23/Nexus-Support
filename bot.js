@@ -74,7 +74,11 @@ async function ensureCounterFile() {
   try {
     await fs.access(COUNTER_FILE);
   } catch {
-    await fs.writeFile(COUNTER_FILE, JSON.stringify({ lastTicketNumber: 0 }, null, 2), 'utf8');
+    await fs.writeFile(
+      COUNTER_FILE,
+      JSON.stringify({ lastTicketNumber: 0 }, null, 2),
+      'utf8'
+    );
   }
 }
 
@@ -83,9 +87,10 @@ async function getNextTicketNumber() {
 
   const raw = await fs.readFile(COUNTER_FILE, 'utf8');
   const data = JSON.parse(raw);
-  const next = Number(data.lastTicketNumber || 0) + 1;
 
+  const next = Number(data.lastTicketNumber || 0) + 1;
   data.lastTicketNumber = next;
+
   await fs.writeFile(COUNTER_FILE, JSON.stringify(data, null, 2), 'utf8');
 
   return `ticket-${String(next).padStart(3, '0')}`;
@@ -120,7 +125,9 @@ async function sendTicketPanel() {
       !perms.has(PermissionsBitField.Flags.SendMessages) ||
       !perms.has(PermissionsBitField.Flags.EmbedLinks)
     ) {
-      console.error('Ticket panel error: missing View Channel, Send Messages, or Embed Links permission.');
+      console.error(
+        'Ticket panel error: missing View Channel, Send Messages, or Embed Links permission.'
+      );
       return;
     }
 
@@ -141,12 +148,12 @@ async function sendTicketPanel() {
       .setTitle('📨 Ticket-System')
       .setDescription(
         'Press the button below to open a support ticket.\n\n' +
-        '**Requirements:**\n' +
-        '• Steam ID (17 numbers)\n' +
-        '• Description of the issue\n\n' +
-        '⚠ Tickets can only be closed by the team.'
+          '**Requirements:**\n' +
+          '• Steam ID (17 numbers)\n' +
+          '• Description of the issue\n\n' +
+          '⚠ Tickets can only be closed by the team.'
       )
-      .setColor(0x5865F2)
+      .setColor(0x5865f2)
       .addFields({
         name: '🛠 Support',
         value: 'Questions, reports, or help requests.'
@@ -167,6 +174,11 @@ async function sendTicketPanel() {
 
 client.once(Events.ClientReady, async () => {
   console.log(`Bot Online: ${client.user.tag}`);
+
+  client.user.setPresence({
+    activities: [{ name: '🛠 Fixing issues… probably', type: 0 }],
+    status: 'online'
+  });
 
   await ensureCounterFile();
 
@@ -259,9 +271,11 @@ client.on(Events.InteractionCreate, async interaction => {
       let creatorId = null;
 
       for (const m of orderedMessages) {
-        const text = m.content && m.content.trim().length > 0
-          ? m.content
-          : '[embed/attachment/system message]';
+        const text =
+          m.content && m.content.trim().length > 0
+            ? m.content
+            : '[embed/attachment/system message]';
+
         transcript += `${m.author.tag}: ${text}\n`;
 
         if (!creatorId && !m.author.bot) {
@@ -276,6 +290,7 @@ client.on(Events.InteractionCreate, async interaction => {
             po.id !== PROJECTLEAD_ROLE &&
             po.id !== SUPPORT_ROLE
         );
+
         if (overwrite) creatorId = overwrite.id;
       }
 
@@ -284,17 +299,23 @@ client.on(Events.InteractionCreate, async interaction => {
           const creator = await client.users.fetch(creatorId);
           await creator.send({
             content: `Here is the transcript for your ticket: ${interaction.channel.name}`,
-            files: [{
-              attachment: Buffer.from(transcript, 'utf8'),
-              name: `${interaction.channel.name}-transcript.txt`
-            }]
+            files: [
+              {
+                attachment: Buffer.from(transcript, 'utf8'),
+                name: `${interaction.channel.name}-transcript.txt`
+              }
+            ]
           });
         } catch (err) {
           console.error('Failed to DM transcript to creator:', err);
-          await interaction.channel.send('⚠️ I could not DM the transcript to the ticket creator.');
+          await interaction.channel.send(
+            '⚠️ I could not DM the transcript to the ticket creator.'
+          );
         }
       } else {
-        await interaction.channel.send('⚠️ I could not determine the ticket creator to send the transcript.');
+        await interaction.channel.send(
+          '⚠️ I could not determine the ticket creator to send the transcript.'
+        );
       }
 
       await interaction.channel.setParent(archive.id);
@@ -302,10 +323,12 @@ client.on(Events.InteractionCreate, async interaction => {
 
       await interaction.channel.send({
         content: `Ticket archived. Auto deleting in ${AUTO_DELETE_DAYS} days.`,
-        files: [{
-          attachment: Buffer.from(transcript),
-          name: 'transcript.txt'
-        }]
+        files: [
+          {
+            attachment: Buffer.from(transcript),
+            name: 'transcript.txt'
+          }
+        ]
       });
 
       setTimeout(async () => {
@@ -386,11 +409,11 @@ client.on(Events.InteractionCreate, async interaction => {
       .setTitle(`🎫 ${ticketName}`)
       .setDescription(
         `**User:** ${interaction.user}\n\n` +
-        `**Steam ID:** ${steamId}\n` +
-        `**Steam Profile:** ${steamProfile}\n\n` +
-        `**Problem:**\n${problem}`
+          `**Steam ID:** ${steamId}\n` +
+          `**Steam Profile:** ${steamProfile}\n\n` +
+          `**Problem:**\n${problem}`
       )
-      .setColor(0x57F287)
+      .setColor(0x57f287)
       .setTimestamp();
 
     await ticketChannel.send({
