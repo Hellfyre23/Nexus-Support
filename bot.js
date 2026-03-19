@@ -55,12 +55,18 @@ const staffButtonsRow = new ActionRowBuilder().addComponents(
     .setStyle(ButtonStyle.Danger)
 );
 
-const archiveButtonsRow = new ActionRowBuilder().addComponents(
-  new ButtonBuilder()
-    .setCustomId('delete_ticket')
-    .setLabel('🗑 Delete Ticket')
-    .setStyle(ButtonStyle.Danger)
-);
+function buildArchiveButtonsRow(transcriptUrl) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setLabel('Open Transcript')
+      .setStyle(ButtonStyle.Link)
+      .setURL(transcriptUrl),
+    new ButtonBuilder()
+      .setCustomId('delete_ticket')
+      .setLabel('🗑 Delete Ticket')
+      .setStyle(ButtonStyle.Danger)
+  );
+}
 
 function isStaff(member) {
   return (
@@ -311,11 +317,23 @@ client.on(Events.InteractionCreate, async interaction => {
             attachment: Buffer.from(transcript, 'utf8'),
             name: `${interaction.channel.name}-transcript.txt`
           }
-        ],
-        components: [archiveButtonsRow]
+        ]
       });
 
       const transcriptAttachment = transcriptMessage.attachments.first();
+
+      if (transcriptAttachment) {
+        const archiveEmbed = new EmbedBuilder()
+          .setTitle('📦 Ticket Archived')
+          .setDescription('This ticket is archived. Use the buttons below.')
+          .setColor(0xed4245)
+          .setTimestamp();
+
+        await interaction.channel.send({
+          embeds: [archiveEmbed],
+          components: [buildArchiveButtonsRow(transcriptAttachment.url)]
+        });
+      }
 
       if (creatorId && transcriptAttachment) {
         try {
