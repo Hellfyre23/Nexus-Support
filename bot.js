@@ -55,6 +55,13 @@ const staffButtonsRow = new ActionRowBuilder().addComponents(
     .setStyle(ButtonStyle.Danger)
 );
 
+const archiveButtonsRow = new ActionRowBuilder().addComponents(
+  new ButtonBuilder()
+    .setCustomId('delete_ticket')
+    .setLabel('🗑 Delete Ticket')
+    .setStyle(ButtonStyle.Danger)
+);
+
 function isStaff(member) {
   return (
     member.roles.cache.has(PROJECTLEAD_ROLE) ||
@@ -304,7 +311,8 @@ client.on(Events.InteractionCreate, async interaction => {
             attachment: Buffer.from(transcript, 'utf8'),
             name: `${interaction.channel.name}-transcript.txt`
           }
-        ]
+        ],
+        components: [archiveButtonsRow]
       });
 
       const transcriptAttachment = transcriptMessage.attachments.first();
@@ -343,6 +351,26 @@ client.on(Events.InteractionCreate, async interaction => {
           console.error('Auto delete failed:', err);
         }
       }, AUTO_DELETE_DAYS * 24 * 60 * 60 * 1000);
+    }
+
+    if (interaction.customId === 'delete_ticket') {
+      if (!isStaff(interaction.member)) {
+        return interaction.reply({
+          content: 'Only staff can delete archived tickets.',
+          ephemeral: true
+        });
+      }
+
+      await interaction.reply({
+        content: 'Deleting archived ticket...',
+        ephemeral: true
+      });
+
+      try {
+        await interaction.channel.delete();
+      } catch (err) {
+        console.error('Manual delete failed:', err);
+      }
     }
   }
 
