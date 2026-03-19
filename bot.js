@@ -294,42 +294,47 @@ client.on(Events.InteractionCreate, async interaction => {
         if (overwrite) creatorId = overwrite.id;
       }
 
-      if (creatorId) {
+      await interaction.channel.setParent(archive.id);
+      await interaction.channel.setName(`closed-${interaction.channel.name}`);
+
+      const transcriptMessage = await interaction.channel.send({
+        content: `Ticket archived. Auto deleting in ${AUTO_DELETE_DAYS} days.`,
+        files: [
+          {
+            attachment: Buffer.from(transcript, 'utf8'),
+            name: `${interaction.channel.name}-transcript.txt`
+          }
+        ]
+      });
+
+      const transcriptAttachment = transcriptMessage.attachments.first();
+
+      if (creatorId && transcriptAttachment) {
         try {
           const creator = await client.users.fetch(creatorId);
+
+          const transcriptButton = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setLabel('Open Transcript')
+              .setStyle(ButtonStyle.Link)
+              .setURL(transcriptAttachment.url)
+          );
+
           await creator.send({
             content: `Here is the transcript for your ticket: ${interaction.channel.name}`,
-            files: [
-              {
-                attachment: Buffer.from(transcript, 'utf8'),
-                name: `${interaction.channel.name}-transcript.txt`
-              }
-            ]
+            components: [transcriptButton]
           });
         } catch (err) {
-          console.error('Failed to DM transcript to creator:', err);
+          console.error('Failed to DM transcript link to creator:', err);
           await interaction.channel.send(
-            '⚠️ I could not DM the transcript to the ticket creator.'
+            '⚠️ I could not DM the transcript link to the ticket creator.'
           );
         }
       } else {
         await interaction.channel.send(
-          '⚠️ I could not determine the ticket creator to send the transcript.'
+          '⚠️ I could not determine the ticket creator or transcript link.'
         );
       }
-
-      await interaction.channel.setParent(archive.id);
-      await interaction.channel.setName(`closed-${interaction.channel.name}`);
-
-      await interaction.channel.send({
-        content: `Ticket archived. Auto deleting in ${AUTO_DELETE_DAYS} days.`,
-        files: [
-          {
-            attachment: Buffer.from(transcript),
-            name: 'transcript.txt'
-          }
-        ]
-      });
 
       setTimeout(async () => {
         try {
